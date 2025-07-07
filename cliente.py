@@ -4,26 +4,35 @@ import threading
 
 def recibir_mensajes(sock):
     while True:
-        try:
-            mensaje = sock.recv(1024)
-            if not mensaje:
-                print("\nDesconectado del servidor")
-                sys.exit(0)
-            print("\n" + mensaje.decode('utf-8'), end='')
-        except Exception as e:
-            print(f"\nError recibiendo: {e}")
-            sock.close()
-            sys.exit(1)
+            try:
+                mensaje = sock.recv(1024)
+                if not mensaje:
+                    print("\nDesconectado del servidor")
+                    sys.exit(0)
+                print(f"\n{mensaje.decode('utf-8')}\n> ", end='', flush=True)
+            except Exception as e:
+                print(f"\nError recibiendo: {e}")
+                sock.close()
+                sys.exit(1)
 
 def enviar_mensajes(sock):
-    while True:
-        try:
+    try:
+        nombre = input("Elegí tu nombre: ")
+        sock.sendall(f"/nombre {nombre}".encode('utf-8'))
+
+        while True:
             mensaje = input()
+            if mensaje.strip() == "/exit":
+                print("Desconectando...")
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
+                sys.exit(0)
             sock.sendall(mensaje.encode('utf-8'))
-        except Exception as e:
-            print(f"\nError enviando: {e}")
-            sock.close()
-            sys.exit(1)
+    except Exception as e:
+        print(f"\nError enviando: {e}")
+        sock.close()
+        sys.exit(1)
+
 
 if len(sys.argv) != 3:
     print("Uso: python cliente.py <IP> <PUERTO>")

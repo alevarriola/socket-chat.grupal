@@ -2,6 +2,21 @@ import socket
 import select
 import sys
 
+def broadcast(mensaje, servidor, sockets_activos, clientes, emisor=None):
+    for sock in sockets_activos[:]:  # iterar sobre copia para poder modificar lista
+        if sock != servidor and sock != emisor:
+            try:
+                sock.sendall(mensaje.encode('utf-8'))
+            except Exception:
+                nombre = clientes.get(sock, "Anonimo")
+                print(f"[!] Error enviando a {nombre}, cerrando socket")
+                if sock in sockets_activos:
+                    sockets_activos.remove(sock)
+                clientes.pop(sock, None)
+                try:
+                    sock.close()
+                except:
+                    pass
 
 # Crear socket TCP (stream) para IPv4
 servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -23,41 +38,84 @@ servidor.listen(10)
 
 print(f"Servidor escuchando en {IP}:{PUERTO}")
 
-# Lista de sockets activos (servidor + clientes)
+# Lista de sockets activos y dic de socket => nombre
 sockets_activos = [servidor]
+clientes = {}
+try: 
+    while True:
+        # Esperar actividad en cualquier socket activo (Devuelve los sockets que tienen datos para leer)
+        sockets_lectura, _, _ = select.select(sockets_activos, [], [], 1)
 
-while True:
-    # Esperar actividad en cualquier socket activo (Devuelve los sockets que tienen datos para leer)
-    sockets_lectura, _, _ = select.select(sockets_activos, [], [])
+        for socket_actual in sockets_lectura:
 
-    for socket_actual in sockets_lectura:
+            # Si el socket actual es el servidor → alguien nuevo quiere conectarse
+            if socket_actual == servidor:
+                cliente, direccion = servidor.accept()
+                sockets_activos.append(cliente)
+                clientes[cliente] = None
+                print(f"[+] Nuevo cliente conectado desde {direccion}")
+                cliente.sendall("Por favor, escribí tu nombre con: /nombre TuNombre\n".encode('utf-8'))
+            # Si es un cliente que ya estaba conectado → leer mensaje
+            else:
+                try:
+                    # Leer hasta 1024 bytes de datos del cliente
+                    mensaje_bytes = socket_actual.recv(1024)
 
-        # Si el socket actual es el servidor → alguien nuevo quiere conectarse
-        if socket_actual == servidor:
-            cliente, direccion = servidor.accept()
-            sockets_activos.append(cliente)
-            print(f"[+] Nuevo cliente conectado desde {direccion}")
+                    # Si no hay datos, el cliente se desconectó
+                    if not mensaje_bytes:
+                        nombre = clientes.get(socket_actual, "Anonimo")
+                        print(f"[-] {nombre} se desconectó")
+                        broadcast(f"{nombre} salió del chat.", servidor, sockets_activos, clientes)
+                        if socket_actual in sockets_activos:
+                            sockets_activos.remove(socket_actual)
+                        clientes.pop(socket_actual, None)
+                        try:
+                            socket_actual.close()
+                        except:
+                            pass
+                        continue
+                    
+                    # Leer mensaje del cliente
+                    mensaje = mensaje_bytes.decode('utf-8').strip()
 
-        # Si es un cliente que ya estaba conectado → leer mensaje
-        else:
-            try:
-                # Leer hasta 1024 bytes de datos del cliente
-                mensaje = socket_actual.recv(1024)
+                    # asignacion de nombre
+                    if mensaje.startswith("/nombre "):
+                        nombre = mensaje.split(" ", 1)[1].strip()
+                        clientes[socket_actual] = nombre
+                        print(f"[+] Cliente asignó nombre: {nombre}")
+                        broadcast(f"{nombre} se unió al chat.", servidor, sockets_activos, clientes)
+                        continue
+                    
+                    # si no asigno, reiteramos
+                    if clientes.get(socket_actual) is None:
+                        socket_actual.sendall("Primero debes enviar tu nombre con /nombre TuNombre\n".encode('utf-8'))
+                        continue
 
-                # Si no hay datos, el cliente se desconectó
-                if not mensaje:
-                    print("[-] Cliente desconectado")
-                    sockets_activos.remove(socket_actual)
-                    socket_actual.close()
-                    continue
+                    nombre = clientes.get(socket_actual, "Anonimo")
 
-                # recorrer todos los otros que esten en activos
-                for otro_socket in sockets_activos:
-                    if otro_socket != servidor and otro_socket != socket_actual:
-                        # Reenviar el mensaje a todos menos el que lo mandó
-                        otro_socket.sendall(mensaje)
+                    # manejo de mensajes
+                    broadcast(f"{nombre}: {mensaje}", servidor, sockets_activos, clientes, socket_actual)
 
-            except Exception as e:
-                print(f"[!] Error con un cliente: {e}")
-                sockets_activos.remove(socket_actual)
-                socket_actual.close()
+                except Exception as e:
+                    print(f"[!] Error con un cliente: {e}")
+                    nombre = clientes.get(socket_actual, "Anonimo")
+                    broadcast(f"{nombre} salió del chat por error.", servidor, sockets_activos, clientes)
+                    if socket_actual in sockets_activos:
+                        sockets_activos.remove(socket_actual)
+                    clientes.pop(socket_actual, None)
+                    try:
+                        socket_actual.close()
+                    except:
+                        pass
+        
+except KeyboardInterrupt:
+    print("\n[!] Servidor interrumpido con Ctrl+C. Cerrando conexiones...")
+
+finally:
+    for sock in sockets_activos:
+        try:
+            sock.close()
+        except:
+            pass
+    servidor.close()
+    sys.exit(0)
