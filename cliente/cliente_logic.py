@@ -1,4 +1,5 @@
 import sys
+import socket
 
 def recibir_mensajes(sock):
     while True:
@@ -33,7 +34,7 @@ def enviar_mensajes(sock):
             # si el mensaje es /exit, cierra comunicacion, cierra sock y termina programa
             if mensaje.strip() == "/exit":
                 print("Desconectando...")
-                sock.shutdown(sock.SHUT_RDWR)
+                sock.shutdown(socket.SHUT_RDWR)
                 sock.close()
                 sys.exit(0)
 
