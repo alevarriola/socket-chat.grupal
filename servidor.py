@@ -3,11 +3,18 @@ import select
 import sys
 
 def broadcast(mensaje, servidor, sockets_activos, clientes, emisor=None):
-    for sock in sockets_activos[:]:  # iterar sobre copia para poder modificar lista
+
+    # recorremos todos nuestros sock, mientras no sea el mismo y el servidor
+    for sock in sockets_activos[:]:  # : iterar sobre copia
         if sock != servidor and sock != emisor:
             try:
+                # enviamos mensaje codificado
                 sock.sendall(mensaje.encode('utf-8'))
+
+            # si falla el envio por desconexion
             except Exception:
+
+                # eliminamos al cliente del sock
                 nombre = clientes.get(sock, "Anonimo")
                 print(f"[!] Error enviando a {nombre}, cerrando socket")
                 if sock in sockets_activos:
@@ -48,14 +55,14 @@ try:
 
         for socket_actual in sockets_lectura:
 
-            # Si el socket actual es el servidor → alguien nuevo quiere conectarse
+            # Si el socket actual es el servidor significa alguien nuevo quiere conectarse
             if socket_actual == servidor:
                 cliente, direccion = servidor.accept()
                 sockets_activos.append(cliente)
                 clientes[cliente] = None
                 print(f"[+] Nuevo cliente conectado desde {direccion}")
-                cliente.sendall("Por favor, escribí tu nombre con: /nombre TuNombre\n".encode('utf-8'))
-            # Si es un cliente que ya estaba conectado → leer mensaje
+
+            # Si es un cliente que ya estaba conectado, leer mensaje
             else:
                 try:
                     # Leer hasta 1024 bytes de datos del cliente
@@ -63,9 +70,13 @@ try:
 
                     # Si no hay datos, el cliente se desconectó
                     if not mensaje_bytes:
+
+                        # informamos deconexion
                         nombre = clientes.get(socket_actual, "Anonimo")
                         print(f"[-] {nombre} se desconectó")
                         broadcast(f"{nombre} salió del chat.", servidor, sockets_activos, clientes)
+
+                        # se elimina sock y dato del cliente
                         if socket_actual in sockets_activos:
                             sockets_activos.remove(socket_actual)
                         clientes.pop(socket_actual, None)
@@ -75,7 +86,7 @@ try:
                             pass
                         continue
                     
-                    # Leer mensaje del cliente
+                    # si si mando algo, decodificamos mensaje del cliente
                     mensaje = mensaje_bytes.decode('utf-8').strip()
 
                     # asignacion de nombre
@@ -86,20 +97,24 @@ try:
                         broadcast(f"{nombre} se unió al chat.", servidor, sockets_activos, clientes)
                         continue
                     
-                    # si no asigno, reiteramos
+                    # si no asigno, reiteramos hasta que lo asigne
                     if clientes.get(socket_actual) is None:
                         socket_actual.sendall("Primero debes enviar tu nombre con /nombre TuNombre\n".encode('utf-8'))
                         continue
 
+                    # si tiene nombre, y no entro en ningun otro if, enviar mensaje a todos
                     nombre = clientes.get(socket_actual, "Anonimo")
-
-                    # manejo de mensajes
                     broadcast(f"{nombre}: {mensaje}", servidor, sockets_activos, clientes, socket_actual)
 
+                # en caso de error o interrupcion, remover al cliente
                 except Exception as e:
+
+                    # informamos a todos 
                     print(f"[!] Error con un cliente: {e}")
                     nombre = clientes.get(socket_actual, "Anonimo")
                     broadcast(f"{nombre} salió del chat por error.", servidor, sockets_activos, clientes)
+
+                    # eliminamos datos y sock del cliente
                     if socket_actual in sockets_activos:
                         sockets_activos.remove(socket_actual)
                     clientes.pop(socket_actual, None)
@@ -107,10 +122,12 @@ try:
                         socket_actual.close()
                     except:
                         pass
-        
+
+# interrupcion de servidor        
 except KeyboardInterrupt:
     print("\n[!] Servidor interrumpido con Ctrl+C. Cerrando conexiones...")
 
+# limpieza de todo cuando se cierra el servidor
 finally:
     for sock in sockets_activos:
         try:
