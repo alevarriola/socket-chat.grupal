@@ -66,7 +66,7 @@ Conexión de red entre el servidor y los clientes
 
 Alejandro A.
 
-Desarrollador en constante formación.
+Programador en constante formación.
 
 GitHub: @alevarriola
 
